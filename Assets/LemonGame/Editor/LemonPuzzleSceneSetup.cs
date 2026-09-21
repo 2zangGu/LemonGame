@@ -18,6 +18,7 @@ namespace LemonPuzzle.EditorTools
     {
         const string ArtPath = "Assets/LemonGame/Art/Lemon.png";
         const string SkyBackgroundPath = "Assets/LemonGame/Art/SkyBackground.png";
+        const string StartBackgroundPath = "Assets/LemonGame/Art/StartBackground.png";
         const string PrefabFolder = "Assets/LemonGame/Prefabs";
         const string PrefabPath = PrefabFolder + "/LemonCell.prefab";
 
@@ -37,6 +38,15 @@ namespace LemonPuzzle.EditorTools
             (0.65f, 0.97f, 32f, -20f, 0.20f),
             (0.02f, 0.50f, 45f, 8f, 0.18f),
             (0.98f, 0.50f, 45f, -8f, 0.18f),
+        };
+
+        // Start-screen decorative lemons (fruits-box style): (x, y, number), anchored to canvas
+        // center so they scatter across the right side while the big Play lemon sits on the left.
+        static readonly (float x, float y, string num)[] StartDecorSpots =
+        {
+            (60f, 220f, "5"), (220f, 220f, "7"), (380f, 220f, "6"), (540f, 220f, "8"),
+            (140f, 60f, "3"), (300f, 60f, "2"), (460f, 60f, "9"),
+            (60f, -140f, "1"), (380f, -140f, "4"),
         };
 
         [MenuItem("Tools/Lemon Puzzle/Setup Scene (Create UI + Wire Managers)")]
@@ -163,9 +173,7 @@ namespace LemonPuzzle.EditorTools
             boardController.currentSumText = currentSumText;
 
             // ---- Overlays ----
-            var startPanel = CreateOverlay("StartOverlay", canvasGO.transform,
-                "레몬 퍼즐", "가운데 뜨는 목표 숫자와 합이 같도록 레몬을 드래그로 묶어서 지워보세요. 제한시간 2분!",
-                "게임 시작", out var startButton, out _, out _, out _);
+            var startPanel = CreateStartOverlay(canvasGO.transform, sprite, out var startButton);
 
             var endPanel = CreateOverlay("EndOverlay", canvasGO.transform,
                 "타임 오버!", "최종 점수예요. 다시 도전해볼까요?",
@@ -359,6 +367,52 @@ namespace LemonPuzzle.EditorTools
 
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             EditorUtility.DisplayDialog("레몬 퍼즐", "리셋 버튼을 추가하고 제한시간과 위치를 바꿨어요. Play로 확인해보세요 (Ctrl+S로 저장하는 것도 잊지 마세요).", "확인");
+        }
+
+        /// <summary>
+        /// Rebuilds the start-screen overlay in "fruits-box" style: a gingham checkerboard background,
+        /// a big lemon-shaped Play button on the left, an orange logo top-left, and a scatter of small
+        /// numbered decorative lemons on the right. Safe to re-run - any existing StartOverlay is
+        /// replaced. Use this on a scene that was already built with Setup Scene, since that menu item
+        /// refuses to re-run once BoardPanel exists.
+        /// </summary>
+        [MenuItem("Tools/Lemon Puzzle/Redesign Start Screen")]
+        public static void RedesignStartScreen()
+        {
+            if (EditorApplication.isPlaying)
+            {
+                EditorUtility.DisplayDialog("레몬 퍼즐", "Play 모드에서는 씬을 편집할 수 없어요. 먼저 Play를 멈추고 다시 실행해주세요.", "확인");
+                return;
+            }
+
+            var canvas = Object.FindFirstObjectByType<Canvas>();
+            var hud = Object.FindFirstObjectByType<HUDController>();
+            if (canvas == null || hud == null)
+            {
+                EditorUtility.DisplayDialog("레몬 퍼즐", "씬을 찾을 수 없어요. 먼저 Setup Scene을 한 번 실행해주세요.", "확인");
+                return;
+            }
+
+            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(ArtPath);
+            if (sprite == null)
+            {
+                EditorUtility.DisplayDialog("레몬 퍼즐",
+                    $"{ArtPath} 위치에서 스프라이트를 찾지 못했어요.\nLemon.png를 선택한 뒤 Inspector에서 Texture Type을 'Sprite (2D and UI)'로 바꾸고 Apply를 눌러주세요.",
+                    "확인");
+                return;
+            }
+
+            var existing = canvas.transform.Find("StartOverlay");
+            if (existing != null) Object.DestroyImmediate(existing.gameObject);
+
+            var startPanel = CreateStartOverlay(canvas.transform, sprite, out var startButton);
+            startPanel.transform.SetAsLastSibling(); // sit above everything else, like the original overlay did
+
+            hud.startPanel = startPanel;
+            hud.startButton = startButton; // HUDController.Start() wires the click listener when Play runs
+
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            EditorUtility.DisplayDialog("레몬 퍼즐", "시작 화면을 과일박스 스타일로 새로 만들었어요. Play로 확인해보세요 (Ctrl+S로 저장하는 것도 잊지 마세요).", "확인");
         }
 
         /// <summary>
@@ -676,6 +730,86 @@ namespace LemonPuzzle.EditorTools
             var prefab = PrefabUtility.SaveAsPrefabAsset(cellGO, PrefabPath);
             Object.DestroyImmediate(cellGO);
             return prefab.GetComponent<LemonCellView>();
+        }
+
+        /// <summary>
+        /// Fruits-box-style start screen: a full-screen light gingham background, a big lemon-shaped
+        /// Play button on the left, a citrus-colored logo top-left, and a scatter of small numbered
+        /// decorative lemons on the right - purely visual, not clickable.
+        /// </summary>
+        static GameObject CreateStartOverlay(Transform parent, Sprite lemonSprite, out Button startButton)
+        {
+            var root = new GameObject("StartOverlay", typeof(RectTransform), typeof(Image));
+            root.transform.SetParent(parent, false);
+            SetAnchors((RectTransform)root.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+
+            var bgSprite = LoadSpriteEnsured(StartBackgroundPath);
+            var rootImage = root.GetComponent<Image>();
+            if (bgSprite != null)
+            {
+                rootImage.sprite = bgSprite;
+                rootImage.type = Image.Type.Simple;
+                rootImage.preserveAspect = false;
+            }
+            else
+            {
+                // StartBackground.png missing/not imported yet - still land on a soft green tint.
+                rootImage.color = new Color(0.93f, 0.97f, 0.88f);
+            }
+
+            var titleText = CreateText("StartTitle", root.transform, "레몬 게임", 60, TextAnchor.MiddleLeft);
+            titleText.fontStyle = FontStyle.Bold;
+            titleText.color = new Color(0.95f, 0.55f, 0.12f);
+            SetAnchors(titleText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(60, -90), new Vector2(700, 100));
+
+            // Scattered numbered lemons, purely decorative (no Button, no raycast).
+            foreach (var spot in StartDecorSpots)
+            {
+                var dotGO = new GameObject("DecorLemon", typeof(RectTransform), typeof(Image));
+                dotGO.transform.SetParent(root.transform, false);
+                var dotRT = (RectTransform)dotGO.transform;
+                dotRT.anchorMin = new Vector2(0.5f, 0.5f);
+                dotRT.anchorMax = new Vector2(0.5f, 0.5f);
+                dotRT.pivot = new Vector2(0.5f, 0.5f);
+                dotRT.anchoredPosition = new Vector2(spot.x, spot.y);
+                dotRT.sizeDelta = new Vector2(95, 95);
+                var dotImg = dotGO.GetComponent<Image>();
+                dotImg.sprite = lemonSprite;
+                dotImg.preserveAspect = true;
+                dotImg.raycastTarget = false;
+
+                var numText = CreateText("Number", dotGO.transform, spot.num, 28, TextAnchor.MiddleCenter);
+                numText.color = Color.black;
+                numText.fontStyle = FontStyle.Bold;
+                SetAnchors(numText.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            }
+
+            // Big lemon Play button, left of center - the main call to action.
+            var playGO = new GameObject("PlayButton", typeof(RectTransform), typeof(Image), typeof(Button));
+            playGO.transform.SetParent(root.transform, false);
+            var playRT = (RectTransform)playGO.transform;
+            playRT.anchorMin = new Vector2(0.5f, 0.5f);
+            playRT.anchorMax = new Vector2(0.5f, 0.5f);
+            playRT.pivot = new Vector2(0.5f, 0.5f);
+            playRT.anchoredPosition = new Vector2(-380, 30);
+            playRT.sizeDelta = new Vector2(300, 300);
+            var playImg = playGO.GetComponent<Image>();
+            playImg.sprite = lemonSprite;
+            playImg.preserveAspect = true;
+            startButton = playGO.GetComponent<Button>();
+
+            var playText = CreateText("PlayText", playGO.transform, "Play", 44, TextAnchor.MiddleCenter);
+            playText.color = Color.white;
+            playText.fontStyle = FontStyle.Bold;
+            SetAnchors(playText.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+
+            // Short instructions, tucked near the bottom so the fruity look stays uncluttered.
+            var bodyText = CreateText("BodyText", root.transform,
+                "가운데 뜨는 목표 숫자와 합이 같도록 레몬을 드래그로 묶어서 지워보세요!", 20, TextAnchor.MiddleCenter);
+            SetAnchors(bodyText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0, 90), new Vector2(1100, 40));
+            bodyText.color = new Color(0.2f, 0.35f, 0.15f);
+
+            return root;
         }
 
         static GameObject CreateOverlay(string name, Transform parent, string title, string body, string buttonLabel,

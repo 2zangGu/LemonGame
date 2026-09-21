@@ -73,9 +73,16 @@ namespace LemonPuzzle
         {
             if (startButton != null) startButton.onClick.AddListener(() => gameManager.StartGame());
             if (restartButton != null) restartButton.onClick.AddListener(() => gameManager.StartGame());
-            // In-game reset - jumps straight back to a fresh board/score/timer without going through
-            // the game-over overlay, same underlying call as Start/Restart.
-            if (resetButton != null) resetButton.onClick.AddListener(() => gameManager.StartGame());
+            // In-game reset - goes back to the start screen (like quitting the run), rather than
+            // jumping straight into a new game. The player presses Play again when ready.
+            if (resetButton != null) resetButton.onClick.AddListener(HandleResetToStart);
+            if (startPanel != null) startPanel.SetActive(true);
+            if (endPanel != null) endPanel.SetActive(false);
+        }
+
+        void HandleResetToStart()
+        {
+            gameManager.ReturnToStart();
             if (startPanel != null) startPanel.SetActive(true);
             if (endPanel != null) endPanel.SetActive(false);
         }

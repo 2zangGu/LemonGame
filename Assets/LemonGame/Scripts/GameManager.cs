@@ -153,5 +153,13 @@ namespace LemonPuzzle
             IsRunning = false;
             OnGameOver?.Invoke(title);
         }
+
+        /// <summary>Stops the current run and leaves the board frozen as-is, without firing the
+        /// game-over overlay - used when the player presses the in-game Reset button to jump back
+        /// to the start screen (a deliberate exit, not a loss).</summary>
+        public void ReturnToStart()
+        {
+            IsRunning = false;
+        }
     }
 }
